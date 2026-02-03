@@ -27,6 +27,9 @@ DEBIAN_MIRROR="http://deb.debian.org/debian"
 DEBIAN_SUITE="bookworm"
 ARCH="amd64"
 
+# Wallpaper source (local path)
+WALLPAPER_SRC="$(pwd)/images/kbu.jpeg"
+
 # Base packages for debootstrap (minimal, no complex dependencies)
 BASE_PACKAGES=(
     systemd-sysv
@@ -44,6 +47,11 @@ EXTRA_PACKAGES=(
     xinit
     xterm
     network-manager
+    lightdm
+    lightdm-gtk-greeter
+    zenity
+    feh
+    fonts-dejavu
 )
 
 # ============================================================================
@@ -163,7 +171,94 @@ EOF
     # Configure locales
     echo "en_US.UTF-8 UTF-8" > "${ROOTFS_DIR}/etc/locale.gen"
     
-    # Create a default user
+    # Copy wallpaper to rootfs
+    if [[ -f "${WALLPAPER_SRC}" ]]; then
+        log "Copying wallpaper..."
+        mkdir -p "${ROOTFS_DIR}/usr/share/backgrounds/kbuos"
+        cp "${WALLPAPER_SRC}" "${ROOTFS_DIR}/usr/share/backgrounds/kbuos/wallpaper.jpeg"
+    else
+        log "WARNING: Wallpaper not found at ${WALLPAPER_SRC}"
+    fi
+    
+    # Create About KbuOS script
+    cat > "${ROOTFS_DIR}/usr/local/bin/about-kbuos" << 'ABOUT_SCRIPT'
+#!/bin/bash
+zenity --info \
+    --title="About KbuOS" \
+    --width=400 \
+    --text="<b>KbuOS</b>\n\nVersion: 1.0\n\nA hobby project.\n\nBuilt with:\n• Openbox Window Manager\n• Linux Kernel (amd64)\n• Debian Bookworm base\n\nKarabük University\nComputer Engineering Department\n\n© Abdulaziz Shamsiev2024-2026"
+ABOUT_SCRIPT
+    chmod +x "${ROOTFS_DIR}/usr/local/bin/about-kbuos"
+    
+    # Create desktop entry for About KbuOS
+    mkdir -p "${ROOTFS_DIR}/usr/share/applications"
+    cat > "${ROOTFS_DIR}/usr/share/applications/about-kbuos.desktop" << 'DESKTOP_ENTRY'
+[Desktop Entry]
+Name=About KbuOS
+Comment=Information about KbuOS
+Exec=/usr/local/bin/about-kbuos
+Icon=help-about
+Terminal=false
+Type=Application
+Categories=System;
+DESKTOP_ENTRY
+    
+    # Configure LightDM
+    mkdir -p "${ROOTFS_DIR}/etc/lightdm"
+    cat > "${ROOTFS_DIR}/etc/lightdm/lightdm.conf" << 'LIGHTDM_CONF'
+[Seat:*]
+autologin-user=user
+autologin-user-timeout=0
+user-session=openbox
+greeter-session=lightdm-gtk-greeter
+LIGHTDM_CONF
+
+    # Configure LightDM GTK Greeter with wallpaper
+    cat > "${ROOTFS_DIR}/etc/lightdm/lightdm-gtk-greeter.conf" << 'GREETER_CONF'
+[greeter]
+background=/usr/share/backgrounds/kbuos/wallpaper.jpeg
+theme-name=Adwaita
+icon-theme-name=Adwaita
+font-name=DejaVu Sans 11
+xft-antialias=true
+xft-dpi=96
+xft-hintstyle=slight
+xft-rgba=rgb
+GREETER_CONF
+    
+    # Create Openbox autostart to set wallpaper
+    mkdir -p "${ROOTFS_DIR}/etc/xdg/openbox"
+    cat > "${ROOTFS_DIR}/etc/xdg/openbox/autostart" << 'AUTOSTART'
+# Set wallpaper
+feh --bg-fill /usr/share/backgrounds/kbuos/wallpaper.jpeg &
+
+# Start network manager applet (if available)
+nm-applet &
+AUTOSTART
+    
+    # Create Openbox menu with About KbuOS
+    cat > "${ROOTFS_DIR}/etc/xdg/openbox/menu.xml" << 'MENU_XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_menu xmlns="http://openbox.org/3.4/menu">
+  <menu id="root-menu" label="KbuOS">
+    <item label="Terminal">
+      <action name="Execute"><execute>xterm</execute></action>
+    </item>
+    <separator />
+    <menu id="system-menu" label="System">
+      <item label="About KbuOS">
+        <action name="Execute"><execute>/usr/local/bin/about-kbuos</execute></action>
+      </item>
+    </menu>
+    <separator />
+    <item label="Log Out">
+      <action name="Exit" />
+    </item>
+  </menu>
+</openbox_menu>
+MENU_XML
+    
+    # Create user and configure system
     chroot "${ROOTFS_DIR}" /bin/bash << 'CHROOT_EOF'
 set -e
 
@@ -171,37 +266,15 @@ set -e
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
-# Set root password (change this!)
-echo "root:myos" | chpasswd
+# Set root password
+echo "root:kbuos" | chpasswd
 
 # Create a regular user
 useradd -m -s /bin/bash -G sudo,audio,video,netdev user
 echo "user:user" | chpasswd
 
-# Enable auto-login for the user on tty1
-mkdir -p /etc/systemd/system/getty@tty1.service.d
-cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf << 'GETTY_EOF'
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin user --noclear %I $TERM
-GETTY_EOF
-
-# Configure .xinitrc for user to start Openbox
-cat > /home/user/.xinitrc << 'XINITRC_EOF'
-#!/bin/sh
-exec openbox-session
-XINITRC_EOF
-chmod +x /home/user/.xinitrc
-chown user:user /home/user/.xinitrc
-
-# Auto-start X on login for user
-cat >> /home/user/.bash_profile << 'PROFILE_EOF'
-# Start X automatically on tty1
-if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
-    startx
-fi
-PROFILE_EOF
-chown user:user /home/user/.bash_profile
+# Enable LightDM (login manager)
+systemctl enable lightdm
 
 # Enable NetworkManager
 systemctl enable NetworkManager
@@ -270,17 +343,17 @@ terminal_output gfxterm
 set menu_color_normal=white/black
 set menu_color_highlight=black/light-gray
 
-menuentry "MyOS - Live (Openbox)" {
+menuentry "KbuOS - Live (Openbox)" {
     linux /live/vmlinuz boot=live quiet splash
     initrd /live/initrd
 }
 
-menuentry "MyOS - Live (Safe Mode)" {
+menuentry "KbuOS - Live (Safe Mode)" {
     linux /live/vmlinuz boot=live nomodeset
     initrd /live/initrd
 }
 
-menuentry "MyOS - Live (Text Mode)" {
+menuentry "KbuOS - Live (Text Mode)" {
     linux /live/vmlinuz boot=live systemd.unit=multi-user.target
     initrd /live/initrd
 }
