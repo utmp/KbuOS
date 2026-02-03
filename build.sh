@@ -49,9 +49,14 @@ EXTRA_PACKAGES=(
     network-manager
     lightdm
     lightdm-gtk-greeter
-    zenity
+    yad
     feh
     fonts-dejavu
+    firefox-esr
+    plank
+    picom
+    pcmanfm
+    adwaita-icon-theme
 )
 
 # ============================================================================
@@ -180,28 +185,56 @@ EOF
         log "WARNING: Wallpaper not found at ${WALLPAPER_SRC}"
     fi
     
-    # Create About KbuOS script
+    # Copy KBU logo for icons
+    LOGO_SRC="$(pwd)/images/kbuLogo.png"
+    if [[ -f "${LOGO_SRC}" ]]; then
+        log "Copying KBU logo..."
+        mkdir -p "${ROOTFS_DIR}/usr/share/icons/kbuos"
+        cp "${LOGO_SRC}" "${ROOTFS_DIR}/usr/share/icons/kbuos/kbulogo.png"
+        # Also copy to pixmaps for broader compatibility
+        mkdir -p "${ROOTFS_DIR}/usr/share/pixmaps"
+        cp "${LOGO_SRC}" "${ROOTFS_DIR}/usr/share/pixmaps/kbulogo.png"
+    else
+        log "WARNING: KBU logo not found at ${LOGO_SRC}"
+    fi
+    
+    # Create About KbuOS script with logo
     cat > "${ROOTFS_DIR}/usr/local/bin/about-kbuos" << 'ABOUT_SCRIPT'
 #!/bin/bash
-zenity --info \
-    --title="About KbuOS" \
-    --width=400 \
-    --text="<b>KbuOS</b>\n\nVersion: 1.0\n\nA hobby project.\n\nBuilt with:\n• Openbox Window Manager\n• Linux Kernel (amd64)\n• Debian Bookworm base\n\nKarabük University\nComputer Engineering Department\n\n© Abdulaziz Shamsiev2024-2026"
+yad --title="About KbuOS" \
+    --window-icon=/usr/share/icons/kbuos/kbulogo.png \
+    --image=/usr/share/icons/kbuos/kbulogo.png \
+    --text="<b>KbuOS</b>\n\nVersion: 1.0\n\nA hobby project.\n\nBuilt with:\n• Openbox Window Manager\n• Linux Kernel (amd64)\n• Debian Bookworm base\n\nKarabük University\nComputer Engineering Department\n\n© Abdulaziz Shamsiev 2025-2026" \
+    --button=OK:0 \
+    --center \
+    --width=400
 ABOUT_SCRIPT
     chmod +x "${ROOTFS_DIR}/usr/local/bin/about-kbuos"
     
-    # Create desktop entry for About KbuOS
+    # Create desktop entry for About KbuOS with logo
     mkdir -p "${ROOTFS_DIR}/usr/share/applications"
     cat > "${ROOTFS_DIR}/usr/share/applications/about-kbuos.desktop" << 'DESKTOP_ENTRY'
 [Desktop Entry]
 Name=About KbuOS
 Comment=Information about KbuOS
 Exec=/usr/local/bin/about-kbuos
-Icon=help-about
+Icon=/usr/share/icons/kbuos/kbulogo.png
 Terminal=false
 Type=Application
 Categories=System;
 DESKTOP_ENTRY
+
+    # Create OBS (Student Information System) desktop shortcut
+    cat > "${ROOTFS_DIR}/usr/share/applications/obs-kbu.desktop" << 'OBS_ENTRY'
+[Desktop Entry]
+Name=KBU OBS
+Comment=Karabük University Student Information System
+Exec=firefox-esr https://obs.karabuk.edu.tr
+Icon=applications-internet
+Terminal=false
+Type=Application
+Categories=Network;Education;
+OBS_ENTRY
     
     # Configure LightDM
     mkdir -p "${ROOTFS_DIR}/etc/lightdm"
@@ -229,18 +262,30 @@ GREETER_CONF
     # Create Openbox autostart to set wallpaper
     mkdir -p "${ROOTFS_DIR}/etc/xdg/openbox"
     cat > "${ROOTFS_DIR}/etc/xdg/openbox/autostart" << 'AUTOSTART'
+# Start compositor for transparency and effects
+picom -b &
+
 # Set wallpaper
 feh --bg-fill /usr/share/backgrounds/kbuos/wallpaper.jpeg &
+
+# Start Plank dock at the bottom
+plank &
 
 # Start network manager applet (if available)
 nm-applet &
 AUTOSTART
     
-    # Create Openbox menu with About KbuOS
+    # Create Openbox menu with applications
     cat > "${ROOTFS_DIR}/etc/xdg/openbox/menu.xml" << 'MENU_XML'
 <?xml version="1.0" encoding="UTF-8"?>
 <openbox_menu xmlns="http://openbox.org/3.4/menu">
   <menu id="root-menu" label="KbuOS">
+    <item label="Firefox">
+      <action name="Execute"><execute>firefox-esr</execute></action>
+    </item>
+    <item label="File Manager">
+      <action name="Execute"><execute>pcmanfm</execute></action>
+    </item>
     <item label="Terminal">
       <action name="Execute"><execute>xterm</execute></action>
     </item>
@@ -278,6 +323,42 @@ systemctl enable lightdm
 
 # Enable NetworkManager
 systemctl enable NetworkManager
+
+# Configure Plank dock with default launchers
+mkdir -p /home/user/.config/plank/dock1/launchers
+
+# Firefox launcher
+cat > /home/user/.config/plank/dock1/launchers/firefox-esr.dockitem << 'DOCK_FF'
+[PlankDockItemPreferences]
+Launcher=file:///usr/share/applications/firefox-esr.desktop
+DOCK_FF
+
+# File Manager launcher
+cat > /home/user/.config/plank/dock1/launchers/pcmanfm.dockitem << 'DOCK_FM'
+[PlankDockItemPreferences]
+Launcher=file:///usr/share/applications/pcmanfm.desktop
+DOCK_FM
+
+# Terminal launcher
+cat > /home/user/.config/plank/dock1/launchers/xterm.dockitem << 'DOCK_TERM'
+[PlankDockItemPreferences]
+Launcher=file:///usr/share/applications/xterm.desktop
+DOCK_TERM
+
+# About KbuOS launcher
+cat > /home/user/.config/plank/dock1/launchers/about-kbuos.dockitem << 'DOCK_ABOUT'
+[PlankDockItemPreferences]
+Launcher=file:///usr/share/applications/about-kbuos.desktop
+DOCK_ABOUT
+
+# OBS (Student Portal) launcher
+cat > /home/user/.config/plank/dock1/launchers/obs-kbu.dockitem << 'DOCK_OBS'
+[PlankDockItemPreferences]
+Launcher=file:///usr/share/applications/obs-kbu.desktop
+DOCK_OBS
+
+# Set ownership
+chown -R user:user /home/user/.config
 
 # Clean up apt cache
 apt-get clean
