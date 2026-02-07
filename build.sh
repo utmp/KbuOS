@@ -1,16 +1,4 @@
 #!/bin/bash
-#
-# build-myos.sh - Build a minimal Linux distribution based on Debian
-#
-# This script creates a bootable ISO with:
-#   - Minimal Debian rootfs (via debootstrap)
-#   - Linux kernel (linux-image-amd64)
-#   - Openbox window manager
-#   - GRUB bootloader
-#
-# Usage: sudo ./build-myos.sh
-#
-
 set -e
 
 # ============================================================================
