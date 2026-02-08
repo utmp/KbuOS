@@ -10,9 +10,8 @@ A minimal Linux distribution based on Debian, featuring Openbox window manager w
 
 | Version | Download | Size |
 |---------|----------|------|
-| KbuOS 1.0 | [KbuOS.iso](https://github.com/YOUR_USERNAME/kbuos/releases/latest/download/KbuOS.iso) | ~580 MB |
+| KbuOS 1.0 | [KbuOS.iso](https://github.com/utmp/kbuos/releases/latest/download/KbuOS.iso) | ~580 MB |
 
-> **Note:** Replace the download link with your actual release URL after uploading.
 
 ## ✨ Features
 
